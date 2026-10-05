@@ -1,0 +1,140 @@
+From 601e66f968201276a316ca33d5edb9506f7df0e7 Mon Sep 17 00:00:00 2001
+From: OSW809 Forensics <forensics@local>
+Date: Mon, 5 Oct 2026 07:13:25 +0000
+Subject: [PATCH] feat(devices): add Oraimo Watch 6 Lite (OSW-809) MoYoung V2
+ coordinator
+
+Minimal device mapping onto the maintained MoYoung/CRREPA engine:
+name regex (incl. observed _HHHH MAC suffix), name/icon/manufacturer
+resources, MTU request 508 (family convention; framing follows negotiated
+MTU). No protocol changes, no bind handshake, no DFU, no capability claims
+beyond family defaults. Evidence: on-device MOYOUNG-V2 + FEEA GATT capture
+2026-10-05, official APK developer=MOY, FCC HW MOY.MA4011.01-Z.
+---
+ .../oraimo/OraimoWatch6LiteCoordinator.java   | 82 +++++++++++++++++++
+ .../gadgetbridge/model/DeviceType.java        |  2 +
+ app/src/main/res/values/strings.xml           |  1 +
+ 3 files changed, 85 insertions(+)
+ create mode 100644 app/src/main/java/nodomain/freeyourgadget/gadgetbridge/devices/oraimo/OraimoWatch6LiteCoordinator.java
+
+diff --git a/app/src/main/java/nodomain/freeyourgadget/gadgetbridge/devices/oraimo/OraimoWatch6LiteCoordinator.java b/app/src/main/java/nodomain/freeyourgadget/gadgetbridge/devices/oraimo/OraimoWatch6LiteCoordinator.java
+new file mode 100644
+index 0000000..a4b5a94
+--- /dev/null
++++ b/app/src/main/java/nodomain/freeyourgadget/gadgetbridge/devices/oraimo/OraimoWatch6LiteCoordinator.java
+@@ -0,0 +1,82 @@
++/*  Copyright (C) 2026 Freeyourgadget Community
++    This file is part of Gadgetbridge.
++
++    Gadgetbridge is free software: you can redistribute it and/or modify
++    it under the terms of the GNU Affero General Public License as published
++    by the Free Software Foundation, either version 3 of the License, or
++    (at your option) any later version.
++
++    Gadgetbridge is distributed in the hope that it will be useful,
++    but WITHOUT ANY WARRANTY; without even the implied warranty of
++    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++    GNU Affero General Public License for more details.
++
++    You should have received a copy of the GNU Affero General Public License
++    along with this program.  If not, see <http://www.gnu.org/licenses/>. */
++package nodomain.freeyourgadget.gadgetbridge.devices.oraimo;
++
++import androidx.annotation.DrawableRes;
++
++import java.util.regex.Pattern;
++
++import nodomain.freeyourgadget.gadgetbridge.R;
++import nodomain.freeyourgadget.gadgetbridge.devices.moyoung.AbstractMoyoungDeviceCoordinator;
++
++/**
++ * Coordinator for the Oraimo Watch 6 Lite (hardware models OSW-809 / OSW-809_PK;
++ * regional faces OSW-809_frf "Watch 6 HAYATO", OSW-809_frm "Watch 6 MOCO").
++ *
++ * <p>Device-specific assumptions (evidence-backed, see OSW-809 dossier):
++ * <ul>
++ *   <li>Protocol family: MoYoung/CRREPA ("Da Fit"), generation <b>V2</b> —
++ *       on-device 0x2A29 manufacturer name read "MOYOUNG-V2" (nRF Connect,
++ *       2026-10-05). The inherited {@code MoyoungDeviceSupport} engine is used
++ *       unmodified; this class adds no protocol logic of its own.</li>
++ *   <li>Discovery: inherits the family scan filter (service 0xFEEA in
++ *       advertisements). A raw advertisement capture confirming FEEA-in-adv is
++ *       still pending (EXP-017); if discovery fails, that capture decides
++ *       whether to relax the filter — do not guess here.</li>
++ *   <li>Name matching: the observed advertised name carries a 4-hex-digit
++ *       suffix equal to the last two MAC bytes ("oraimo Watch 6 Lite_CD86",
++ *       MAC EC:12:2F:5A:CD:86). The regex therefore accepts an optional
++ *       _HHHH suffix and otherwise matches only exact model codes, so
++ *       unrelated devices (incl. other oraimo models) cannot match.</li>
++ *   <li>MTU 508: this is a *request* only — {@code MoyoungDeviceSupport}
++ *       calls {@code requestMtu(getMtu()+3)} and derives all framing from the
++ *       *negotiated* MTU via {@code calcMaxWriteChunk(super.getMTU())}, so an
++ *       over-request self-corrects. 508 matches the current family convention
++ *       for MTU-capable V2 devices (e.g. ColmiP81Coordinator); the abstract
++ *       default of 20 would pin a V2 device to legacy framing.</li>
++ *   <li>Deliberately NOT done in v1: no 0xB0 bind/auth handshake (unverified on
++ *       this family; connect/read proven ungated), no DFU/OTA paths, no
++ *       watch-face upload, no alarm-slot or REM/stress capability claims
++ *       (family defaults apply: 3 alarm slots, no REM flag) until measured.</li>
++ * </ul>
++ */
++public class OraimoWatch6LiteCoordinator extends AbstractMoyoungDeviceCoordinator {
++    @Override
++    protected Pattern getSupportedDeviceName() {
++        return Pattern.compile("^(oraimo Watch 6 Lite(_[0-9A-F]{4})?|OSW-809(_(PK|frf|frm))?)$", Pattern.CASE_INSENSITIVE);
++    }
++
++    @Override
++    public int getDeviceNameResource() {
++        return R.string.devicetype_oraimo_watch_6_lite;
++    }
++
++    @Override
++    @DrawableRes
++    public int getDefaultIconResource() {
++        return R.drawable.ic_device_miwatch;
++    }
++
++    @Override
++    public String getManufacturer() {
++        return "oraimo";
++    }
++
++    @Override
++    public int getMtu() {
++        return 508; // request only; see class javadoc
++    }
++}
+diff --git a/app/src/main/java/nodomain/freeyourgadget/gadgetbridge/model/DeviceType.java b/app/src/main/java/nodomain/freeyourgadget/gadgetbridge/model/DeviceType.java
+index 335046c..cb83b06 100644
+--- a/app/src/main/java/nodomain/freeyourgadget/gadgetbridge/model/DeviceType.java
++++ b/app/src/main/java/nodomain/freeyourgadget/gadgetbridge/model/DeviceType.java
+@@ -490,6 +490,7 @@ import nodomain.freeyourgadget.gadgetbridge.devices.moyoung.R50ProCoordinator;
+ import nodomain.freeyourgadget.gadgetbridge.devices.moyoung.RainbuvvyT97Coordinator;
+ import nodomain.freeyourgadget.gadgetbridge.devices.moyoung.ViranC29Coordinator;
+ import nodomain.freeyourgadget.gadgetbridge.devices.moyoung.ZL02DCoordinator;
++import nodomain.freeyourgadget.gadgetbridge.devices.oraimo.OraimoWatch6LiteCoordinator;
+ import nodomain.freeyourgadget.gadgetbridge.devices.no1f1.No1F1Coordinator;
+ import nodomain.freeyourgadget.gadgetbridge.devices.nothing.CmfBuds2Coordinator;
+ import nodomain.freeyourgadget.gadgetbridge.devices.nothing.CmfBuds2PlusCoordinator;
+@@ -1258,6 +1259,7 @@ public enum DeviceType {
+     IGPSPORT_BINAVI(IGPSportBiNaviCoordinator.class),
+     OLLEE_WATCH_ONE(OlleeDeviceCoordinator.class),
+     UNA_WATCH(UnaDeviceCoordinator.class),
++    ORAIMO_WATCH_6_LITE(OraimoWatch6LiteCoordinator.class),
+     ZEBLAZE_BEYOND_3_PRO(Beyond3ProCoordinator.class),
+     QN_SCALE(QnScaleCoordinator.class),
+     CARDO_LS24X(Ls24xDeviceCoordinator.class),
+diff --git a/app/src/main/res/values/strings.xml b/app/src/main/res/values/strings.xml
+index 1142aad..43218d3 100644
+--- a/app/src/main/res/values/strings.xml
++++ b/app/src/main/res/values/strings.xml
+@@ -5989,4 +5989,5 @@
+     <string name="datestep_next_week">Next week</string>
+     <string name="datestep_prev_month">Previous month</string>
+     <string name="datestep_next_month">Next month</string>
++    <string name="devicetype_oraimo_watch_6_lite">oraimo Watch 6 Lite</string>
+ </resources>
+-- 
+2.47.3
+
