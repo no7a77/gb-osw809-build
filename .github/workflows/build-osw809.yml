@@ -1,14 +1,6 @@
-# Fallback builder: GitHub Actions (ubuntu-latest = 4 vCPU / 16 GB RAM).
-# Needed ONLY because the 2 GB analysis sandbox cannot hold Gadgetbridge's Kotlin
-# compile — see BUILD_RECORD.md runs 1-8 (kernel OOM kills + GC livelock evidence).
-#
-# Usage (2 minutes, no compiling on your machine):
-#   1. Create an empty public GitHub repo (any name).
-#   2. Push this file as .github/workflows/build-osw809.yml
-#      and the patch as osw809.patch (both live in this workspace:
-#      ci/github-actions-build.yml, gadgetbridge_patch/v2/0001-*.patch).
-#   3. Actions tab → "build-osw809" → Run workflow.
-#   4. Download artifact "gadgetbridge-osw809" → APK inside.
+# Builder for the OSW-809 Gadgetbridge test APK.
+# Base: Codeberg upstream Freeyourgadget/Gadgetbridge @ c75887df30fc899aebe878919e28a8a1b0132b55
+# Patch: osw809.patch (sha256 585365f9f8df2954ff3975354942903a5c7fe7c287be6a6688be9276c81b46ee) - verified in-job.
 name: build-osw809
 on:
   workflow_dispatch:
@@ -16,29 +8,33 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: checkout upstream Gadgetbridge at pinned commit
+      - name: checkout this repo (patch + workflow only)
         uses: actions/checkout@v4
-        with:
-          repository: Freeyourgadget/Gadgetbridge
-          ref: c75887df30fc899aebe878919e28a8a1b0132b55
-          fetch-depth: 1
-      - name: copy patch from workflow repo
-        uses: actions/checkout@v4
-        with:
-          path: patchrepo
+      - name: clone upstream Gadgetbridge from Codeberg at pinned commit
+        run: |
+          git clone https://codeberg.org/Freeyourgadget/Gadgetbridge.git src
+          cd src
+          git checkout c75887df30fc899aebe878919e28a8a1b0132b55
+          echo "UPSTREAM_BASE=$(git log -1 --format=%H)" >> "$GITHUB_ENV"
+          git log -1 --format="pinned base: %H %cd"
       - name: verify + apply patch v2
         run: |
-          cp patchrepo/osw809.patch .
+          cd src
+          cp ../osw809.patch .
           echo "585365f9f8df2954ff3975354942903a5c7fe7c287be6a6688be9276c81b46ee  osw809.patch" | sha256sum -c -
           git apply --check osw809.patch
           git apply osw809.patch
+          git status --short
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 21
       - name: build debug APK (mainline flavour)
-        run: ./gradlew :app:assembleMainlineDebug
+        run: |
+          cd src
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
+          ./gradlew :app:assembleMainlineDebug
       - uses: actions/upload-artifact@v4
         with:
           name: gadgetbridge-osw809
-          path: app/build/outputs/apk/mainline/debug/*.apk
+          path: src/app/build/outputs/apk/mainline/debug/*.apk
